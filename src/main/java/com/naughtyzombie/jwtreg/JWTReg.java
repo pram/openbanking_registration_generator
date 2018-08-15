@@ -7,11 +7,13 @@ import picocli.CommandLine.Option;
 
 import javax.crypto.Cipher;
 import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.security.*;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
+import java.security.spec.InvalidKeySpecException;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.X509EncodedKeySpec;
 import java.time.LocalDate;
@@ -68,14 +70,16 @@ public class JWTReg implements Runnable {
             claims.put("id_token_signed_response_alg","ES256");
             claims.put("software_statement",ssa);
 
-            RSAPrivateKey privateKeyFromString = getPrivateKeyFromString(privateKey);
+            PrivateKey privateKeyFromString = getPrivKey(privateKey);
 
             Map<String, Object> headerParams = new HashMap<>();
             headerParams.put("alg","RS256");
             headerParams.put("kid",kid);
             headerParams.put("typ","JWT");
 
-            System.out.println(Jwts.builder().setHeaderParams(headerParams).addClaims(claims).signWith(privateKeyFromString).toString());
+            JwtBuilder jwtBuilder = Jwts.builder().setHeaderParams(headerParams).addClaims(claims).signWith(privateKeyFromString);
+            String compact = jwtBuilder.compact();
+            System.out.println(compact);
 
 
 
@@ -87,6 +91,20 @@ public class JWTReg implements Runnable {
 
     public static void main(String[] args) {
         CommandLine.run(new JWTReg(), System.out, args);
+    }
+
+    private PrivateKey getPrivKey(String keyString) throws NoSuchAlgorithmException, InvalidKeySpecException {
+        String pkcs8Pem = keyString;
+        pkcs8Pem = pkcs8Pem.replace("-----BEGIN PRIVATE KEY-----", "");
+        pkcs8Pem = pkcs8Pem.replace("-----END PRIVATE KEY-----", "");
+        pkcs8Pem = pkcs8Pem.replaceAll("\\s+","");
+
+        byte[] pkcs8EncodedBytes = Base64.getDecoder().decode(pkcs8Pem);
+        PKCS8EncodedKeySpec keySpec = new PKCS8EncodedKeySpec(pkcs8EncodedBytes);
+        KeyFactory kf = KeyFactory.getInstance("RSA");
+        PrivateKey privKey = kf.generatePrivate(keySpec);
+
+        return privKey;
     }
 
     private String getKey(String filename) throws IOException {
@@ -109,7 +127,7 @@ public class JWTReg implements Runnable {
         String privateKeyPEM = key;
         privateKeyPEM = privateKeyPEM.replace("-----BEGIN PRIVATE KEY-----\n", "");
         privateKeyPEM = privateKeyPEM.replace("-----END PRIVATE KEY-----", "");
-        byte[] encoded = Base64.getDecoder().decode(privateKeyPEM);
+        byte[] encoded = Base64.getDecoder().decode(privateKeyPEM.getBytes(StandardCharsets.UTF_8));
         KeyFactory kf = KeyFactory.getInstance("RSA");
         PKCS8EncodedKeySpec keySpec = new PKCS8EncodedKeySpec(encoded);
         RSAPrivateKey privKey = (RSAPrivateKey) kf.generatePrivate(keySpec);
